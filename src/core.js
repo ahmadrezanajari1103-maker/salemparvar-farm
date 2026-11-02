@@ -78,6 +78,8 @@ function normEntry(r){
   b.feedIn=r.feedIn&&typeof r.feedIn==="object"?r.feedIn:{};
   b.tozin=r.tozin&&typeof r.tozin==="object"?r.tozin:{};
   if(r.feedUse&&typeof r.feedUse==="object"){Object.keys(r.feedUse).forEach(t=>{const v=r.feedUse[t];const kg=v&&typeof v==="object"?v.kg:v;if(kg)b.tozin[t]=(b.tozin[t]||0)+kg;if(v&&v.meals)b.meals=Math.max(b.meals||0,v.meals);});}
+  // توزین بدون نوع: همه‌ی توزین‌ها یک عدد کل
+  {const tzs=Object.values(b.tozin).reduce((a,v)=>a+(Number(v)||0),0);b.tozin=tzs?{[TZ]:tzs}:{};}
   b.notes=r.notes||"";b.items=r.items||"";
   return b;
 }
@@ -87,7 +89,8 @@ const SEED=(function(){
     mk("1405/07/05",[20,16,15],"ب کمپلکس ال کارنتین"),mk("1405/07/06",[19,29,28],"مولتی الکترولیت"),mk("1405/07/07",[28,36,40],"")];
 })();
 const LS_DATA="mehr1405:v2:data",LS_SET="mehr1405:v2:settings",LS_OLD="mehr1405:data:v1",LS_OLDSET="mehr1405:settings:v1";
-const APP_VERSION="2.0.0";
+const APP_VERSION="2.1.0";
+const TZ="توزین";
 const state={view:"home",sent:{},cellEdit:null,dayMenu:null,firstRun:false,swUpdate:false,entries:[],courses:[],settings:clone(DEFAULT_SETTINGS),input:"",showSettings:false,selDay:null,editing:null,editCourse:null,pendingDelete:null,chartMode:"split",toast:"",confirm:null,unk:{},endOpen:{},editToday:false,showFcr:false,showClosed:false,busy:""};
 const LOGO="LOGO_DATA";
 
@@ -139,7 +142,7 @@ function courseTexts(date,h){return state.courses.filter(c=>c.halls.includes(h))
 function hallsLabel(hs){const V=visIdx();if(V.every(i=>hs.includes(i))&&hs.length>=V.length)return "همه سالن‌ها";return hs.map(i=>hallName(i)).join("، ");}
 
 /* ================= محاسبات ================= */
-function feedTypesUsed(){const s=new Set(FEED_TYPES);state.entries.forEach(e=>{Object.keys(e.feedIn).forEach(t=>s.add(t));Object.keys(e.tozin).forEach(t=>s.add(t));});return [...s].filter(t=>FEED_TYPES.includes(t)||state.entries.some(e=>e.feedIn[t]||e.tozin[t]));}
+function feedTypesUsed(){const s=new Set(FEED_TYPES);state.entries.forEach(e=>{Object.keys(e.feedIn).forEach(t=>s.add(t));});return [...s].filter(t=>FEED_TYPES.includes(t)||state.entries.some(e=>e.feedIn[t]||e.tozin[t]));}
 function compute(){
   const st=state.settings,start=st.start,startJ=keyToJdn(start),V=visIdx(),NH=H();
   const map={};state.entries.forEach(e=>map[e.date]=e);

@@ -2,13 +2,13 @@
 function sheetHTML(row){
   const st=state.settings,en=row.en,V=visIdx();
   const totalInit=V.reduce((a,s)=>a+(st.halls[s].initial||0),0);
-  const tz=Object.keys(en.tozin).filter(t=>en.tozin[t]);
+  const tzv=row.tzSum||0;
   const cell=v=>`<td>${v===""||v==null?"&nbsp;":v}</td>`;
   let body="";
   V.forEach((s,k)=>{
     const tal=row.tal[s],hz=row.hazf[s],any=tal!=null||hz!=null;
     body+=`<tr><th class="hn">${toFa(s+1)}</th>`+cell(fmtInt(row.prevLive[s]))+cell(tal!=null?fmtInt(tal):"")+cell(hz!=null?fmtInt(hz):"—")+cell(any?fmtInt((tal||0)+(hz||0)):"")+cell(any&&row.live[s]!=null?fmtInt(row.live[s]):"");
-    if(k===0)body+=`<td rowspan="${V.length}" class="fd">${tz.map(t=>`<div>${t}</div>`).join("")||"&nbsp;"}</td><td rowspan="${V.length}" class="fd">${tz.map(t=>`<div>${fmt(en.tozin[t])}</div>`).join("")||"&nbsp;"}</td><td rowspan="${V.length}" class="fd">${row.meals!=null?fmtInt(row.meals):"&nbsp;"}</td>`;
+    if(k===0)body+=`<td rowspan="${V.length}" class="fd">&nbsp;</td><td rowspan="${V.length}" class="fd">${tzv?fmt(tzv):"&nbsp;"}</td><td rowspan="${V.length}" class="fd">${row.meals!=null?fmtInt(row.meals):"&nbsp;"}</td>`;
     body+=cell(esc(toFa(en.water[s])))+cell(row.dama!=null?fmt(row.dama):"")+cell(esc(row.kh))+cell(en.avgW[s]!=null?fmtW(en.avgW[s]):"")+`<td class="tx">${esc(en.vacc[s])||"&nbsp;"}</td><td class="tx">${esc(row.daruFull[s]).replace(/ \| /g,"<br>")||"&nbsp;"}</td></tr>`;
   });
   const anyT=row.hasTal||row.hasHazf;
@@ -16,9 +16,8 @@ function sheetHTML(row){
     `<td></td><td>${row.tzSum?fmt(row.tzSum):"&nbsp;"}</td><td></td><td colspan="3"></td><td>${row.avgWeight?fmtW(Math.round(row.avgWeight*1000)/1000):""}</td><td colspan="2"></td></tr>`;
   const items=[];
   Object.keys(en.feedIn).filter(t=>en.feedIn[t]).forEach(t=>items.push(`ورود دان ${t}: <b>${fmt(en.feedIn[t])}</b> کیلوگرم`));
-  tz.forEach(t=>items.push(`توزین دان ${t}: <b>${fmt(en.tozin[t])}</b> کیلوگرم`));
-  const stockTxt=Object.keys(row.stockBy).filter(t=>row.stockBy[t]).map(t=>`${t} ${fmt(row.stockBy[t])}`).join("، ");
-  items.push(`<b>مانده انبار دان:</b> ${row.cumInTot||row.cumTzTot?(fmt(row.stock)+" کیلوگرم"+(stockTxt?` (${stockTxt})`:"")):"—"}`);
+  if(tzv)items.push(`توزین دان امروز: <b>${fmt(tzv)}</b> کیلوگرم`);
+  items.push(`<b>مانده انبار دان:</b> ${row.cumInTot||row.cumTzTot?(fmt(row.stock)+" کیلوگرم (کل ورودی "+fmt(row.cumInTot)+" − کل توزین "+fmt(row.cumTzTot)+")"):"—"}`);
   if(row.cumTzTot)items.push(`توزین تجمعی دوره: ${fmt(row.cumTzTot)} کیلوگرم`);
   if(row.farmW)items.push(`وزن کل فارم: ${fmt(Math.round(row.farmW))} کیلوگرم`);
   if(row.fcr)items.push(`<b>ضریب تبدیل: ${fmtDec(row.fcr,3)}</b>`);
@@ -61,22 +60,25 @@ function aggFoot(rows){
   return `<tfoot><tr><td colspan="2">جمع دوره</td>${V.map(s=>`<td>${fmtInt(sum(s))}</td>`).join("")}<td>${fmtInt(l.cumTalTot)}</td><td>${fmtInt(l.cumHazfTot)}</td><td></td><td></td><td>${fmtInt(l.liveTotal)}</td><td>${fmt(l.cumInTot)}</td><td>${fmt(l.cumTzTot)}</td><td>${fmt(l.stock)}</td><td></td><td>${fw?fmtDec(l.cumTzTot/fw,3):""}</td><td class="wd">${fw?"ضریب نهایی با وزن زنده "+fmt(fw)+" کیلو":""}</td></tr></tfoot>`;
 }
 function buildAggPages(){
+  // ردیف‌ها ارتفاع ثابت دارند (یک خط، متن بلند با …) تا صفحه‌بندی با تصویر نهایی دقیقاً یکی باشد.
   const rows=compute();const st=state.settings,V=visIdx();
   const init=V.reduce((a,s)=>a+(st.halls[s].initial||0),0);
   const host=document.getElementById("measure");host.innerHTML="";
-  const pages=[];
-  const newPage=(first)=>{const p=document.createElement("div");p.className="ap";p.innerHTML=`<div class="aphh"></div>${first?aggSummary(rows):""}<div class="apbody"><table class="atable">${aggTableHead()}<tbody></tbody></table></div>`;host.appendChild(p);return p;};
-  let pg=newPage(true);
-  const over=p=>{const b=p.querySelector(".apbody");return b.scrollHeight>b.clientHeight+1;};
-  rows.forEach(r=>{
-    const tb=pg.querySelector("tbody");tb.insertAdjacentHTML("beforeend",aggRowHTML(r,init));
-    if(over(pg)&&tb.children.length>1){tb.lastElementChild.remove();pages.push(pg);pg=newPage(false);pg.querySelector("tbody").insertAdjacentHTML("beforeend",aggRowHTML(r,init));}
-  });
-  pg.querySelector("table").insertAdjacentHTML("beforeend",aggFoot(rows));
-  if(over(pg)){const tf=pg.querySelector("tfoot");tf.remove();pages.push(pg);pg=newPage(false);pg.querySelector("table").insertAdjacentHTML("beforeend",tf.outerHTML);}
-  pages.push(pg);
-  const html=pages.map((p,i)=>{p.querySelector(".aphh").outerHTML=aggHeader(i+1,pages.length,rows);return p.outerHTML;});
-  host.innerHTML="";return html;
+  const mk=(first,body,foot)=>`<div class="ap">${aggHeader(0,0,rows)}${first?aggSummary(rows):""}<div class="apbody"><table class="atable">${aggTableHead()}<tbody>${body}</tbody>${foot||""}</table></div></div>`;
+  const fits=html=>{host.innerHTML=html;const b=host.querySelector(".apbody"),t=b.querySelector("table");return t.offsetHeight<=b.clientHeight-8;};
+  const rowsH=rows.map(r=>aggRowHTML(r,init));const foot=aggFoot(rows);
+  const pages=[];let i=0,first=true;
+  while(i<rowsH.length){
+    let n=1;while(i+n<rowsH.length&&fits(mk(first,rowsH.slice(i,i+n+1).join(""))))n++;
+    const isLast=i+n>=rowsH.length;
+    if(isLast&&fits(mk(first,rowsH.slice(i,i+n).join(""),foot))){pages.push({first,body:rowsH.slice(i,i+n).join(""),foot});i+=n;break;}
+    if(isLast&&n>1){n--;}
+    pages.push({first,body:rowsH.slice(i,i+n).join(""),foot:""});i+=n;first=false;
+    if(i>=rowsH.length)pages.push({first:false,body:"",foot});
+  }
+  if(!pages.length)pages.push({first:true,body:"",foot});
+  host.innerHTML="";
+  return pages.map((p,k)=>`<div class="ap">${aggHeader(k+1,pages.length,rows)}${p.first?aggSummary(rows):""}<div class="apbody"><table class="atable">${aggTableHead()}<tbody>${p.body}</tbody>${p.foot}</table></div></div>`);
 }
 
 /* ================= تبدیل HTML به تصویر و PDF ================= */

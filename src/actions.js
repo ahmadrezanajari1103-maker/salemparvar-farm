@@ -11,7 +11,7 @@ function applyParse(p,msgs){
     if(p.copyDaru){const pr=state.entries.find(x=>x.date===addDays(p.date,-1));if(pr)for(let h=0;h<MAXH;h++)if(!p.daru[h]&&pr.daru[h])e.daru[h]=pr.daru[h];}
     if(p.dama!=null)e.dama=p.dama;if(p.khamooshi)e.khamooshi=p.khamooshi;if(p.meals!=null)e.meals=p.meals;
     const touched={in:{},tozin:{}};
-    p.feed.forEach(f=>{const t=f.type||defaultFeedType(p.date);const o=f.mode==="tozin"?e.tozin:e.feedIn;const tk=f.mode==="tozin"?"tozin":"in";
+    p.feed.forEach(f=>{const t=f.mode==="tozin"?TZ:(f.type||defaultFeedType(p.date));const o=f.mode==="tozin"?e.tozin:e.feedIn;const tk=f.mode==="tozin"?"tozin":"in";
       if(p.replace&&!touched[tk][t]){o[t]=0;touched[tk][t]=1;}o[t]=(o[t]||0)+f.kg;});
     if(p.notes)e.notes=e.notes?e.notes+" | "+p.notes:p.notes;
     if(p.items)e.items=e.items?e.items+" | "+p.items:p.items;
@@ -58,7 +58,7 @@ function submit(){
 function daySig(date){
   const r=compute().find(x=>x.date===date);if(!r)return "";
   const V=visIdx();
-  return JSON.stringify([V.map(s=>[r.tal[s],r.hazf[s],r.en.avgW[s],r.en.water[s],r.daruFull[s],r.en.vacc[s]]),r.en.tozin,r.en.feedIn,r.dama,r.kh,r.meals,r.en.notes,r.en.items]);
+  return JSON.stringify([V.map(s=>[r.tal[s],r.hazf[s],r.en.avgW[s],r.en.water[s],r.daruFull[s],r.en.vacc[s]]),r.tzSum,r.en.feedIn,r.dama,r.kh,r.meals,r.en.notes,r.en.items]);
 }
 function sentStatus(date){const s=state.sent[date];if(!s)return "none";return s.sig===daySig(date)?"sent":"changed";}
 function markSent(date,how){state.sent[date]={at:new Date().toISOString(),sig:daySig(date),how:how||"manual"};save();}
@@ -73,9 +73,17 @@ function saveCell(){
   const raw=gv("cellIn").trim();
   if(["tal","hazf"].includes(c.f)){const v=numOf(raw);e[c.f][c.h]=v==null?null:Math.round(v);}
   else if(c.f==="avgW"){let v=numOf(raw);if(v!=null&&v>20)v=v/1000;e.avgW[c.h]=v;}
-  else if(["water","daru","vacc"].includes(c.f))e[c.f][c.h]=raw;
+  else if(c.f==="water")e.water[c.h]=raw;
+  else if(c.f==="daru"||c.f==="vacc"){
+    // «همه» در متن = برای همه‌ی سالن‌ها
+    const ALL=/(^|[\s،,(])(?:برای\s*)?(?:همه|همه‌ی|همه ی|کل|تمام)(?:\s*(?:سالن\s*ها|سالنها|سالن‌ها|سالن))?(?=$|[\s،,)])/;
+    const n=normText(raw);
+    if(ALL.test(n)){const t=n.replace(ALL,"$1").replace(/\s+/g," ").replace(/^[\s،,]+|[\s،,]+$/g,"").trim();visIdx().forEach(h=>e[c.f][h]=t);}
+    else e[c.f][c.h]=raw;
+  }
   else if(c.f==="dama"||c.f==="meals"){const v=numOf(raw);e[c.f]=v==null?null:(c.f==="meals"?Math.round(v):v);}
-  else if(c.f==="tozin"||c.f==="feedIn"){e[c.f]={};feedTypesUsed().forEach((t,i)=>{const v=numOf(gv("cellF"+i));if(v)e[c.f][t]=v;});}
+  else if(c.f==="feedIn"){e.feedIn={};feedTypesUsed().forEach((t,i)=>{const v=numOf(gv("cellF"+i));if(v)e.feedIn[t]=v;});}
+  else if(c.f==="tozin"){const v=numOf(raw);e.tozin=v?{[TZ]:v}:{};}
   else e[c.f]=raw;
   if(isNew){state.entries.push(e);sortEntries();}else state.entries=state.entries.map(x=>x.date===c.date?e:x);
   // انتقال به سلول بعدی (تلفات/حذفی سالن بعد)
@@ -110,7 +118,8 @@ function saveEditor(){
   });
   e.dama=numOf(gv("e_dama"));e.khamooshi=gv("e_kh").trim();const m=numOf(gv("e_meals"));e.meals=m==null?null:Math.round(m);
   e.feedIn={};e.tozin={};
-  feedTypesUsed().forEach((t,i)=>{const a=numOf(gv("e_in"+i)),u=numOf(gv("e_tz"+i));if(a)e.feedIn[t]=a;if(u)e.tozin[t]=u;});
+  feedTypesUsed().forEach((t,i)=>{const a=numOf(gv("e_in"+i));if(a)e.feedIn[t]=a;});
+  {const u=numOf(gv("e_tz"));if(u)e.tozin[TZ]=u;}
   e.notes=gv("e_notes").trim();e.items=gv("e_items").trim();
   if(idx>=0)state.entries[idx]=e;else{state.entries.push(e);sortEntries();}
   state.editing=null;save();render();flash("ذخیره شد");
@@ -166,3 +175,49 @@ function importBackup(file){
 }
 function setFinalWeight(){const v=numOf(gv("fw"));state.settings.finalWeight=v;saveSet();renderModal();}
 
+
+/* ویرایش یک روز با کادر متن زیر ردیف جدول */
+function toggleDayBox(d){state.dayBox=state.dayBox===d?null:d;state.dayBoxText="";render();if(state.dayBox)setTimeout(()=>{const t=document.getElementById("dayBoxIn"),sc=document.getElementById("tScroll");if(t&&sc){const tr=t.closest("tr"),head=sc.querySelector("thead");sc.scrollTop=Math.max(0,tr.offsetTop-(head?head.offsetHeight:0)-44);t.focus({preventScroll:true});}},60);}
+function dayBoxParse(){
+  const d=state.dayBox,t=state.dayBoxText||"";if(!d||!t.trim())return null;
+  const p=parseEntry(t);p.date=d;p.dateDefault=false;p.replace=true;
+  p.anti.forEach(a=>{a.date=d;});return p;
+}
+function dayBoxSubmit(){
+  const p=dayBoxParse();if(!p){flash("متنی ننوشته‌اید");return;}
+  if(!hasData(p)&&!p.anti.length){flash("چیزی تشخیص داده نشد");return;}
+  const msgs=[];applyParse(p,msgs);state.dayBoxText="";state.unk={};save();render();flash("روز "+shortDate(p.date)+" به‌روز شد");
+}
+/* ارسال گروهی گزارش‌های روزانه */
+function batchToggle(d,on){if(!state.batch)state.batch={};if(on)state.batch[d]=1;else delete state.batch[d];renderBatchBar();}
+function batchSelect(mode){
+  state.batch={};const rows=compute().filter(r=>r.entry&&r.hasTal);
+  if(mode==="unsent")rows.filter(r=>sentStatus(r.date)!=="sent").forEach(r=>state.batch[r.date]=1);
+  else if(mode==="all")rows.forEach(r=>state.batch[r.date]=1);
+  render();
+}
+function batchDates(){return Object.keys(state.batch||{}).sort();}
+function renderBatchBar(){const el=document.getElementById("batchCount");if(el)el.textContent=toFa(batchDates().length);document.querySelectorAll("[data-batchbtn]").forEach(b=>b.disabled=!batchDates().length||!!state.busy);}
+async function batchSend(share){
+  const ds=batchDates();if(!ds.length||state.busy)return;
+  const already=ds.filter(d=>sentStatus(d)==="sent");
+  if(share&&already.length&&!batchSend._ok){state.confirm={text:toFa(already.length)+" روز از انتخاب‌ها قبلاً ارسال شده‌اند. همه دوباره ارسال شوند؟",ok:()=>{batchSend._ok=true;batchSend(true);}};renderModal();return;}
+  batchSend._ok=false;state.busy="batch";renderBusy();
+  try{
+    const files=[];
+    for(let i=0;i<ds.length;i++){state.toast="ساخت گزارش "+toFa(i+1)+" از "+toFa(ds.length)+"…";renderToast();const {blob,name}=await makeDayJpg(ds[i]);files.push(new File([blob],name,{type:"image/jpeg"}));}
+    state.toast="";renderToast();
+    if(share){
+      let shared=false;
+      try{if(navigator.canShare&&navigator.canShare({files})){await navigator.share({files,title:toFa(files.length)+" گزارش روزانه"});shared=true;}}
+      catch(e){if(e&&e.name==="AbortError"){flash("ارسال لغو شد");return;}}
+      if(shared){ds.forEach(d=>markSent(d,"share"));state.batch={};render();flash("✓ "+toFa(ds.length)+" گزارش ارسال شد و علامت خورد");return;}
+    }
+    for(const f of files){downloadBlob(f,f.name);await new Promise(r=>setTimeout(r,400));}
+    state.confirm={text:toFa(files.length)+" فایل دانلود شد. اگر آن‌ها را فرستادید، همه علامت «ارسال شد» بخورند؟",ok:()=>{ds.forEach(d=>markSent(d,"manual"));state.batch={};render();flash("علامت خورد");}};renderModal();
+  }catch(e){flash("خطا: "+e.message);}finally{state.busy="";renderBusy();}
+}
+function batchMark(){const ds=batchDates();if(!ds.length)return;ds.forEach(d=>markSent(d,"manual"));state.batch={};render();flash("✓ "+toFa(ds.length)+" روز علامت ارسال خورد");}
+
+/* پس از ارتقای نسخه، امضای روزهای ارسال‌شده بازسازی می‌شود تا بی‌دلیل «⚠ تغییر» نشان ندهند */
+function migrateSent(){if(state.settings.sentSigV===2)return;Object.keys(state.sent).forEach(d=>{state.sent[d].sig=daySig(d);});state.settings.sentSigV=2;save();}

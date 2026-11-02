@@ -35,7 +35,7 @@ with sync_playwright() as p:
     pg.click(".nb >> text=جدول");pg.wait_for_timeout(200)
     pg.evaluate("openCell('1405/07/11','hazf',0)");pg.fill("#cellIn","۵");pg.evaluate("state.cellNext=false;saveCell()")
     print("حذفی س۱:",pg.evaluate("state.entries.find(e=>e.date==='1405/07/11').hazf[0]"),"وضعیت ارسال:",pg.evaluate("sentStatus('1405/07/11')"))
-    pg.evaluate("openCell('1405/07/11','tozin',null)");pg.fill("#cellF1","۱۵۰۰");pg.evaluate("saveCell()")
+    pg.evaluate("openCell('1405/07/11','tozin',null)");pg.fill("#cellIn","۱۵۰۰");pg.evaluate("saveCell()")
     print("توزین:",pg.evaluate("JSON.stringify(state.entries.find(e=>e.date==='1405/07/11').tozin)"))
     pg.evaluate("openCell('1405/07/11','tal',0)");pg.wait_for_timeout(100);pg.screenshot(path=out+"/m_cell.png")
     pg.evaluate("state.cellEdit=null;renderModal()")

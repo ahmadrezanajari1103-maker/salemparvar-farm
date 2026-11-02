@@ -36,7 +36,7 @@ function chartSVG(rows){
 }
 
 /* ---------- پیش‌نمایش کادر ---------- */
-function chipsFor(p){
+function chipsFor(p,noEx){
   const V=visIdx(),chips=[];
   const hv=(a,f)=>{const idx=[];for(let h=0;h<MAXH;h++)if(a[h]!=null&&a[h]!=="")idx.push(h);if(!idx.length)return null;
     const vals=idx.map(h=>f(a[h]));if(idx.length===V.length&&idx.every((h,i)=>h===V[i])&&uniq(vals).length===1&&V.length>1)return "همه سالن‌ها: "+vals[0];
@@ -45,7 +45,7 @@ function chipsFor(p){
   if((x=hv(p.tal,fmtInt)))chips.push(["tal","تلفات",x]);
   if((x=hv(p.hazf,fmtInt)))chips.push(["tal","حذفی",x]);
   if((x=hv(p.avgW,v=>fmtW(v)+" کیلو")))chips.push(["w","وزن‌کشی",x]);
-  p.feed.forEach(f=>chips.push(["feed",(f.mode==="tozin"?"توزین":"ورود دان")+" "+(f.type||defaultFeedType(p.date)),fmt(f.kg)+" کیلو"+(f.guessed?' <em>(ورودی فرض شد)</em>':"")+(p.replace?' <em>(جایگزین)</em>':"")]));
+  p.feed.forEach(f=>chips.push(["feed",f.mode==="tozin"?"توزین":"ورود دان "+(f.type||defaultFeedType(p.date)),fmt(f.kg)+" کیلو"+(f.guessed?' <em>(ورودی فرض شد)</em>':"")+(p.replace?' <em>(جایگزین)</em>':"")]));
   if(p.meals!=null)chips.push(["feed","وعده",toFa(p.meals)]);
   if(p.dama!=null)chips.push(["env","دما",fmt(p.dama)]);
   if(p.khamooshi)chips.push(["env","خاموشی",esc(p.khamooshi)]);
@@ -62,7 +62,7 @@ function chipsFor(p){
     return `<span class="unk"><b>${esc(u)}</b><select onchange="setUnk('${id}',this.value)"><option value="">—</option>${["notes","daru","vacc","ignore"].map(c=>`<option value="${c}"${a.cat===c?" selected":""}>${CAT_LABEL[c]}</option>`).join("")}</select><label><input type="checkbox"${a.remember?" checked":""} onchange="setUnkR('${id}',this.checked)"> یادم بماند</label></span>`;}).join("")}</div>`;}
   const warn=p.warn.length?`<div class="pvWarn">${p.warn.map(esc).join("<br>")}</div>`:"";
   const ex=state.entries.find(e=>e.date===p.date);
-  return `<div class="pvDate"><b>${weekdayOfKey(p.date)} ${longDate(p.date)}</b> · سن ${toFa(keyToJdn(p.date)-keyToJdn(state.settings.start)+1)}${p.dateDefault?' <em>(بدون تاریخ ← امروز)</em>':""}${ex?' <span class="exTag">به روز موجود اضافه می‌شود</span>':""}</div><div class="chips">${chips.map(c=>`<span class="chip c-${c[0]}"><b>${c[1]}</b> ${c[2]}</span>`).join("")||'<span class="warnI">داده‌ای در این بخش نیست</span>'}</div>${unk}${warn}`;
+  return `<div class="pvDate"><b>${weekdayOfKey(p.date)} ${longDate(p.date)}</b> · سن ${toFa(keyToJdn(p.date)-keyToJdn(state.settings.start)+1)}${p.dateDefault?' <em>(بدون تاریخ ← امروز)</em>':""}${ex&&!noEx?' <span class="exTag">به روز موجود اضافه می‌شود</span>':""}</div><div class="chips">${chips.map(c=>`<span class="chip c-${c[0]}"><b>${c[1]}</b> ${c[2]}</span>`).join("")||'<span class="warnI">داده‌ای در این بخش نیست</span>'}</div>${unk}${warn}`;
 }
 function previewHTML(){
   if(!state.input.trim())return "";
@@ -144,44 +144,76 @@ function homeView(rows){
 
 /* ---------- جدول با ویرایش سلولی ---------- */
 function tableView(rows){
-  const V=visIdx(),types=feedTypesUsed();const last=rows[rows.length-1];const d='<span class="dim">—</span>';
+  const V=visIdx();const last=rows[rows.length-1];const d='<span class="dim">—</span>';
   const hc=s=>`style="--hc:${HALL_COLORS[s]}"`;
   const ce=(date,f,h,cls,html)=>`<td class="ed ${cls||""}" onclick="openCell('${date}','${f}',${h==null?"null":h})">${html}</td>`;
-  let h=`<div class="card tableCard"><div class="cardHead"><div class="cardTitle">📊 جدول روزانه</div><div class="hint">روی هر خانه بزنید تا همان‌جا ویرایش شود · روی تاریخ = گزینه‌های روز</div></div><div class="tableScroll" id="tScroll"><table class="main"><thead><tr>
+  let h=`<div class="card tableCard"><div class="cardHead"><div class="cardTitle">📊 جدول روزانه</div><div class="hint">روی هر خانه بزنید تا همان‌جا ویرایش شود · روی تاریخ بزنید تا کادر متن همان روز باز شود</div></div><div class="tableScroll" id="tScroll"><table class="main${state.dayBox?" boxOpen":""}"><thead><tr>
    <th class="fz fz1" rowspan="2">تاریخ</th><th class="fz fz2" rowspan="2">سن</th><th rowspan="2" title="وضعیت ارسال">📤</th>
    <th class="g gT" colspan="${V.length+1}">تلفات</th><th class="g gH" colspan="${V.length+1}">حذفی</th><th class="g gL" colspan="${V.length+1}">موجودی زنده</th>
-   <th class="g gF" colspan="${3+types.length}">دان (کیلو)</th><th rowspan="2">وعده</th><th rowspan="2">دما</th><th rowspan="2">خاموشی</th>
+   <th class="g gF" colspan="3">دان (کیلو)</th><th rowspan="2">وعده</th><th rowspan="2">دما</th><th rowspan="2">خاموشی</th>
    <th class="g gW" colspan="${V.length+2}">وزن‌کشی (کیلو)</th><th class="g gD" colspan="${V.length}">دارو / آنتی / واکسن</th><th rowspan="2">توضیحات</th></tr><tr>`+
    V.map(s=>`<th class="hh" ${hc(s)}>س${toFa(s+1)}</th>`).join("")+'<th class="st">جمع</th>'+
    V.map(s=>`<th class="hh" ${hc(s)}>س${toFa(s+1)}</th>`).join("")+'<th class="st">جمع</th>'+
    V.map(s=>`<th class="hh" ${hc(s)}>س${toFa(s+1)}</th>`).join("")+'<th class="st">کل</th>'+
-   '<th>ورود</th><th>توزین</th><th class="st">مانده</th>'+types.map(t=>`<th class="sm">مانده ${t}</th>`).join("")+
+   '<th>ورود</th><th>توزین</th><th class="st">مانده</th>'+
    V.map(s=>`<th class="hh" ${hc(s)}>س${toFa(s+1)}</th>`).join("")+'<th>وزن کل</th><th class="st">ضریب</th>'+
    V.map(s=>`<th class="hh" ${hc(s)}>س${toFa(s+1)}</th>`).join("")+'</tr></thead><tbody>';
   rows.forEach(r=>{
     const ss=r.entry&&r.hasTal?sentStatus(r.date):"";
     h+=`<tr class="${r.entry?"":"nodata"}${r.date===effToday()?" today":""}${state.selDay===r.date?" sel":""}">`+
-     `<td class="fz fz1 datev" onclick="state.dayMenu='${r.date}';renderModal()"><div class="wd">${r.weekday}</div>${shortDate(r.date)}</td><td class="fz fz2 age">${toFa(r.age)}</td>`+
+     `<td class="fz fz1 datev" onclick="toggleDayBox('${r.date}')"><div class="wd">${r.weekday}</div>${shortDate(r.date)}</td><td class="fz fz2 age">${toFa(r.age)}</td>`+
      `<td class="sst">${ss==="sent"?'<span class="sOk">✓</span>':ss==="changed"?'<span class="sCh">⚠</span>':ss==="none"?'<span class="sNo">●</span>':""}</td>`+
      V.map(s=>ce(r.date,"tal",s,"cT",r.tal[s]!=null?fmtInt(r.tal[s]):d)).join("")+`<td class="cT st">${r.hasTal?fmtInt(r.talSum):d}</td>`+
      V.map(s=>ce(r.date,"hazf",s,"cH",r.hazf[s]!=null?fmtInt(r.hazf[s]):d)).join("")+`<td class="cH st">${r.hasHazf?fmtInt(r.hazSum):d}</td>`+
      V.map(s=>`<td class="cL">${r.live[s]!=null?fmtInt(r.live[s]):d}</td>`).join("")+`<td class="cL st">${r.liveTotal!=null?fmtInt(r.liveTotal):d}</td>`+
      ce(r.date,"feedIn",null,"cF",r.inSum?fmt(r.inSum):d)+ce(r.date,"tozin",null,"cF",r.tzSum?fmt(r.tzSum):d)+`<td class="cF st">${(r.cumInTot||r.cumTzTot)?fmt(r.stock):d}</td>`+
-     types.map(t=>`<td class="cF sm">${(r.cumInTot||r.cumTzTot)?fmt(r.stockBy[t]||0):d}</td>`).join("")+
      ce(r.date,"meals",null,r.mealsOwn?"":"inh",r.meals!=null?toFa(r.meals):d)+ce(r.date,"dama",null,r.damaOwn?"":"inh",r.dama!=null?fmt(r.dama):d)+ce(r.date,"khamooshi",null,r.khOwn?"":"inh",r.kh?esc(r.kh):d)+
      V.map(s=>ce(r.date,"avgW",s,"cW",r.en.avgW[s]!=null?fmtW(r.en.avgW[s]):d)).join("")+`<td class="cW">${r.farmW?fmt(Math.round(r.farmW)):d}</td><td class="cW st">${r.fcr?fmtDec(r.fcr,3):d}</td>`+
      V.map(s=>{const ct=courseTexts(r.date,s);const t=[ct.join(" · "),r.en.daru[s],r.en.vacc[s]?"واکسن: "+r.en.vacc[s]:""].filter(Boolean);return ce(r.date,"daru",s,"txc",t.length?t.map((x,i)=>i===0&&ct.length?`<span class="anti">${esc(x)}</span>`:esc(x)).join("<br>"):d);}).join("")+
      ce(r.date,"notes",null,"txc",r.en.notes?esc(r.en.notes):d)+`</tr>`;
+    if(state.dayBox===r.date)h+=`<tr class="dayBoxRow"><td colspan="${15+V.length*5}">${dayBoxHTML(r)}</td></tr>`;
   });
   const tot=k=>V.map(s=>rows.reduce((a,r)=>a+(r[k][s]||0),0));
   h+=`</tbody><tfoot><tr><td class="fz fz1">جمع</td><td class="fz fz2"></td><td></td>`+
     tot("tal").map(x=>`<td class="cT">${fmtInt(x)}</td>`).join("")+`<td class="cT">${fmtInt(last.cumTalTot)}</td>`+
     tot("hazf").map(x=>`<td class="cH">${fmtInt(x)}</td>`).join("")+`<td class="cH">${fmtInt(last.cumHazfTot)}</td>`+
     V.map(s=>`<td class="cL">${last.live[s]!=null?fmtInt(last.live[s]):"—"}</td>`).join("")+`<td class="cL">${last.liveTotal!=null?fmtInt(last.liveTotal):"—"}</td>`+
-    `<td class="cF">${fmt(last.cumInTot)}</td><td class="cF">${fmt(last.cumTzTot)}</td><td class="cF">${fmt(last.stock)}</td>`+types.map(t=>`<td class="cF sm">${fmt(last.stockBy[t]||0)}</td>`).join("")+
+    `<td class="cF">${fmt(last.cumInTot)}</td><td class="cF">${fmt(last.cumTzTot)}</td><td class="cF">${fmt(last.stock)}</td>`+
     `<td colspan="3"></td><td colspan="${V.length*2+3}"></td></tr></tfoot></table></div>
     <div class="legendRow"><span><span class="sOk">✓</span> ارسال شده</span><span><span class="sCh">⚠</span> تغییر بعد از ارسال</span><span><span class="sNo">●</span> ارسال نشده</span><span class="inh">کم‌رنگ = تکرار از روز قبل</span></div></div>`;
   return h;
+}
+
+/* ---------- کادر متن یک روز (زیر ردیف جدول) ---------- */
+function daySummary(r){
+  const V=visIdx(),out=[];
+  if(r.hasTal)out.push(`<b>تلفات</b> ${V.map(s=>"س"+toFa(s+1)+": "+(r.tal[s]!=null?fmtInt(r.tal[s]):"—")).join("  ")}`);
+  if(r.hasHazf)out.push(`<b>حذفی</b> ${V.map(s=>"س"+toFa(s+1)+": "+(r.hazf[s]!=null?fmtInt(r.hazf[s]):"—")).join("  ")}`);
+  if(r.inSum)out.push(`<b>ورود دان</b> ${fmt(r.inSum)}`);if(r.tzSum)out.push(`<b>توزین</b> ${fmt(r.tzSum)}`);
+  if(r.mealsOwn)out.push(`<b>وعده</b> ${toFa(r.meals)}`);if(r.damaOwn)out.push(`<b>دما</b> ${fmt(r.dama)}`);if(r.khOwn)out.push(`<b>خاموشی</b> ${esc(r.kh)}`);
+  if(V.some(s=>r.en.avgW[s]!=null))out.push(`<b>وزن</b> ${V.map(s=>"س"+toFa(s+1)+": "+(r.en.avgW[s]!=null?fmtW(r.en.avgW[s]):"—")).join("  ")}`);
+  V.forEach(s=>{const t=[r.daruFull[s],r.en.vacc[s]].filter(Boolean).join(" + ");if(t)out.push(`<b>دارو س${toFa(s+1)}</b> ${esc(t)}`);});
+  if(r.en.notes)out.push(`<b>توضیحات</b> ${esc(r.en.notes)}`);
+  return out.length?out.map(x=>`<span class="chip">${x}</span>`).join(""):'<span class="hint">این روز هنوز داده‌ای ندارد</span>';
+}
+function dayBoxInput(v){state.dayBoxText=v;const el=document.getElementById("dayBoxPv");if(!el)return;const p=dayBoxParse();el.innerHTML=p?`<div class="preview">${chipsFor(p,true)}</div>`:"";}
+function dayBoxHTML(r){
+  const p=dayBoxParse();const has=!!r.entry;
+  return `<div class="dayBox"><div class="dbHead"><b>✏️ ${r.weekday} ${longDate(r.date)} — سن ${toFa(r.age)}</b><button class="mini" onclick="toggleDayBox('${r.date}')">بستن ✕</button></div>
+  <div class="chips dbSum">${daySummary(r)}</div>
+  <textarea id="dayBoxIn" rows="3" placeholder="متن جدید یا اصلاحی فقط برای همین روز؛ مثلا:&#10;سالن ۱ (۱۵) سالن ۲ (۱۲)&#10;توزین ۲۰۰۰ · دارو سالن ۲ ویتامین سی" oninput="dayBoxInput(this.value)" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();dayBoxSubmit();}">${esc(state.dayBoxText||"")}</textarea>
+  <div class="actRow" style="margin-top:8px"><button class="btn primary" onclick="dayBoxSubmit()">✓ ثبت برای این روز</button><button class="btn ghost small" onclick="state.selDay='${r.date}';go('report')">📄 گزارش</button><button class="btn ghost small" onclick="openEditor('${r.date}')">فرم کامل</button>${has?`<button class="btn danger small" onclick="askDeleteDay('${r.date}')">حذف روز</button>`:""}</div>
+  <div class="hint">هر موردی که بنویسید جایگزین همان مورد در این روز می‌شود (تاریخ لازم نیست). بقیه‌ی موارد دست نمی‌خورد.</div>
+  <div id="dayBoxPv">${p?`<div class="preview">${chipsFor(p,true)}</div>`:""}</div></div>`;
+}
+/* ---------- ارسال گروهی ---------- */
+function batchHTML(rows){
+  const list=[...rows].reverse().filter(r=>r.entry&&r.hasTal);if(!list.length)return "";
+  const B=state.batch||{};const n=Object.keys(B).length;
+  return `<div class="card"><div class="cardHead"><div class="cardTitle">📦 ارسال گروهی گزارش‌های روزانه</div><div class="actRow" style="margin:0"><button class="mini" onclick="batchSelect('unsent')">ارسال‌نشده‌ها</button><button class="mini" onclick="batchSelect('all')">همه</button><button class="mini" onclick="batchSelect('none')">هیچ</button></div></div>
+  <div class="bgrid">${list.map(r=>{const st=sentStatus(r.date);return `<label class="bday ${st}"><input type="checkbox"${B[r.date]?" checked":""} onchange="batchToggle('${r.date}',this.checked)"><span>${shortDate(r.date)}</span><i>${st==="sent"?"✓":st==="changed"?"⚠":"●"}</i></label>`;}).join("")}</div>
+  <div class="actRow" style="margin-top:10px"><button class="btn primary grow" data-busy="batch" data-batchbtn onclick="batchSend(true)"${n?"":" disabled"}>📤 ارسال <span id="batchCount">${toFa(n)}</span> گزارش با هم</button><button class="btn ghost" data-batchbtn onclick="batchMark()"${n?"":" disabled"}>✓ فقط علامت ارسال</button></div>
+  <div class="hint">همه‌ی تصویرهای انتخاب‌شده یک‌جا به واتساپ/تلگرام فرستاده می‌شوند و علامت «ارسال شد» می‌خورند.</div></div>`;
 }
 
 /* ---------- گزارش: بازبینی و ارسال ---------- */
@@ -205,6 +237,7 @@ function reportView(rows){
    <div class="actRow"><button class="btn ghost" data-busy="day" onclick="exportDay(false)">⬇ دانلود JPG</button><button class="btn ghost" onclick="openEditor('${r.date}')">✏️ ویرایش کامل روز</button><button class="btn ghost" onclick="state.input='';go('add')">＋ ثبت</button></div>
    <div class="fname">نام فایل: ${esc(dayFileName(r))}</div>
    <div class="paperBox" id="paperBox"><div class="paperInner" id="paperInner">${sheetHTML(r)}</div></div></div>
+   ${batchHTML(rows)}
    <div class="card"><div class="cardHead"><div class="cardTitle">📚 گزارش تجمیعی دوره (PDF)</div></div>
    <div class="actRow"><button class="btn gold" data-busy="agg" onclick="exportAgg(true)">📤 اشتراک PDF تجمیعی</button><button class="btn ghost" data-busy="agg" onclick="exportAgg(false)">⬇ دانلود PDF</button><button class="btn ghost" onclick="state.showFcr=true;renderModal()">🧮 ضریب تبدیل آخر دوره</button></div>
    <div class="fname">${esc(aggFileName())} · A5 افقی · از ${shortDate(rows[0].date)} تا ${shortDate(rows[rows.length-1].date)}</div></div>`;
@@ -266,7 +299,8 @@ function renderModal(){
     const c=state.cellEdit,en=state.entries.find(e=>e.date===c.date)||blankEntry(c.date);
     const title=`${CELL_LABEL[c.f]}${c.h!=null?" — "+esc(hallName(c.h)):""}`;
     let body;
-    if(c.f==="tozin"||c.f==="feedIn")body=`<div class="egrid" style="grid-template-columns:90px 1fr">${feedTypesUsed().map((t,i)=>`<div class="el">${t}</div><input id="cellF${i}" class="ein" inputmode="decimal" value="${en[c.f][t]?toFa(en[c.f][t]):""}">`).join("")}</div><input id="cellIn" type="hidden">`;
+    if(c.f==="tozin")body=`<input id="cellIn" class="ein big" inputmode="decimal" value="${en.tozin[TZ]?toFa(en.tozin[TZ]):""}" onkeydown="if(event.key==='Enter'){saveCell();}"><div class="hint">کل توزین این روز (کیلو) — از مانده‌ی انبار کم می‌شود</div>`;
+    else if(c.f==="feedIn")body=`<div class="egrid" style="grid-template-columns:90px 1fr">${feedTypesUsed().map((t,i)=>`<div class="el">${t}</div><input id="cellF${i}" class="ein" inputmode="decimal" value="${en[c.f][t]?toFa(en[c.f][t]):""}">`).join("")}</div><input id="cellIn" type="hidden">`;
     else{const cur=c.h!=null?en[c.f][c.h]:en[c.f];const num=["tal","hazf","avgW","dama","meals"].includes(c.f);
       body=(c.f==="notes"||c.f==="daru")?`<textarea id="cellIn" class="ein wide" rows="3">${esc(cur||"")}</textarea>`:`<input id="cellIn" class="ein big" ${num?'inputmode="decimal"':""} value="${cur==null?"":esc(num?toFa(cur):cur)}" onkeydown="if(event.key==='Enter'){state.cellNext=${["tal","hazf","avgW"].includes(c.f)};saveCell();}">`;
       if(c.f==="daru"&&courseTexts(c.date,c.h).length)body+=`<div class="hint">دوره‌ی آنتی (خودکار): ${esc(courseTexts(c.date,c.h).join(" · "))}</div>`;}
@@ -310,8 +344,8 @@ function renderModal(){
     <div class="el">دارو / مکمل</div>${V.map(s=>ti("e_daru"+s,en.daru[s])).join("")}
     <div class="el">واکسن</div>${V.map(s=>ti("e_vacc"+s,en.vacc[s])).join("")}</div>
     <div class="egrid three"><div class="el">دما</div>${ni("e_dama",en.dama)}<div class="el">خاموشی</div>${ti("e_kh",en.khamooshi)}<div class="el">وعده</div>${ni("e_meals",en.meals)}</div>
-    <div class="egrid" style="grid-template-columns:86px 1fr 1fr"><div class="eh">نوع دان</div><div class="eh">ورودی (کیلو)</div><div class="eh">توزین (کیلو)</div>
-    ${types.map((t,i)=>`<div class="el">${t}</div>${ni("e_in"+i,en.feedIn[t])}${ni("e_tz"+i,en.tozin[t])}`).join("")}</div>
+    <div class="egrid" style="grid-template-columns:86px 1fr"><div class="el"><b>توزین (کیلو)</b></div>${ni("e_tz",en.tozin[TZ])}
+    ${types.map((t,i)=>`<div class="el">ورود ${t}</div>${ni("e_in"+i,en.feedIn[t])}`).join("")}</div>
     <div class="field"><label>توضیحات</label><textarea id="e_notes" class="ein wide" rows="2">${esc(en.notes)}</textarea></div>
     <div class="field"><label>اقلام ورودی و خروجی (اضافه بر دان)</label><textarea id="e_items" class="ein wide" rows="2">${esc(en.items)}</textarea></div>
     <div class="modalBtns"><button class="btn ghost" onclick="state.editing=null;renderModal()">انصراف</button><button class="btn primary" onclick="saveEditor()">ذخیره</button></div>`,"edit","state.editing=null");
@@ -328,5 +362,5 @@ if("serviceWorker" in navigator&&/^https?:/.test(location.protocol)){
   }).catch(()=>{});
 }
 if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().catch(()=>{});}
-load();render();
+load();migrateSent();render();
 setInterval(()=>{const t=effToday();if(t!==render._day){render._day=t;render();}},60000);render._day=effToday();
